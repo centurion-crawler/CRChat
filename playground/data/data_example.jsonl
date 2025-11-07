@@ -1,0 +1,14 @@
+{
+    "id": "crc-zhengda3-2024-11-24-2-S24-006808002-p1986",
+    "image": "crc/zhengda3/2024-11-24-2/S24-006808002/p1986.png",
+    "conversations": [
+        {
+            "from": "human",
+            "value": "What is the histological grade?<image>\n"
+        },
+        {
+            "from": "gpt",
+            "value": "Grade 2"
+        }
+    ]
+}
