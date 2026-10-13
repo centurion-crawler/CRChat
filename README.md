@@ -1,17 +1,17 @@
-# CRChat-32B inference
+# CRChat-32B Inference
 
-CRChat 是一个面向病理图像的 LLaVA/Qwen2 推理仓库。本仓库从训练工程中提炼出最小可运行链路，支持：
+CRChat is a LLaVA/Qwen2 inference repository for pathology images. It distills the training codebase into a minimal, runnable inference pipeline that supports:
 
-- 从 CRChat-32B checkpoint **离线加载内嵌的 CLIP ViT-L/14@336 权重**；
-- 对普通图像或 WSI patch 提取 CLIP 特征；
-- 读取 CLAM/Trident 风格的 patch 坐标；
-- 对普通图像或 WSI 高组织含量 tile 运行完整视觉语言生成。
+- Loading the embedded CLIP ViT-L/14@336 weights from a CRChat-32B checkpoint entirely offline;
+- Extracting CLIP features from ordinary images or whole-slide image (WSI) patches;
+- Reading patch coordinates produced by CLAM or Trident;
+- Running end-to-end vision-language generation on ordinary images or tissue-rich WSI tiles.
 
-仓库不包含模型权重、训练数据、患者数据或 CLAM/Trident 源码。
+This repository does not include model weights, training data, patient data, or the CLAM/Trident source code.
 
-## 1. 环境安装
+## 1. Installation
 
-项目按现有 `llava` 环境验证：Python 3.9、PyTorch 2.1.2、Transformers 4.37.2。
+The project has been validated in the existing `llava` environment with Python 3.9, PyTorch 2.1.2, and Transformers 4.37.2.
 
 ```bash
 conda activate llava
@@ -20,19 +20,19 @@ pip install -e '.[wsi,dev]'
 export CRCHAT_MODEL_PATH=/mnt/zzf_nas/pretrain_weights/CRChat-32b
 ```
 
-若系统已经提供 OpenSlide 动态库，可只安装 `openslide-python`；否则 `wsi` extra 会同时安装 `openslide-bin`。模型加载默认 `local_files_only=True`，不会联网下载原始 OpenAI CLIP。
+If the OpenSlide shared library is already available on your system, you may install only `openslide-python`. Otherwise, the `wsi` extra also installs `openslide-bin`. Model loading uses `local_files_only=True` by default and never downloads the original OpenAI CLIP weights.
 
-## 2. 检查 checkpoint
+## 2. Inspect a Checkpoint
 
 ```bash
 crchat inspect-model --model "$CRCHAT_MODEL_PATH"
 ```
 
-该命令不加载 tensor，只检查 config、分片文件、vision tower 和 projector 索引。
+This command does not load tensor payloads. It only validates the configuration, checkpoint shards, vision tower, and projector index.
 
-## 3. 提取视觉特征
+## 3. Extract Visual Features
 
-普通图像：
+### Ordinary images
 
 ```bash
 crchat extract-image \
@@ -43,7 +43,7 @@ crchat extract-image \
   --pool mean
 ```
 
-WSI 自动网格与组织筛选：
+### WSI grid sampling and tissue filtering
 
 ```bash
 crchat extract-wsi \
@@ -58,7 +58,7 @@ crchat extract-wsi \
   --device cuda:0
 ```
 
-使用 CLAM/Trident 已生成的 level-0 坐标：
+### Existing level-0 coordinates from CLAM or Trident
 
 ```bash
 crchat extract-wsi \
@@ -67,9 +67,9 @@ crchat extract-wsi \
   --output outputs/slide.pt
 ```
 
-坐标文件可为 HDF5（数据集名 `coords`）、带 `x,y` 列的 CSV、JSON/JSONL 或 `.pt/.pth`。所有坐标解释为 OpenSlide level-0 `(x, y)`；读取 patch 时使用 `--level`。本工具不会自动采用坐标文件中的 patch level/size 属性，必须让 `--level`、`--patch-size` 与上游保持一致。外部坐标仍会经过 `--min-tissue` 过滤、组织占比排序和 `--max-patches` 截断；如需保留全部上游坐标，可设置 `--min-tissue 0` 并把 `--max-patches` 设为足够大的值。对复杂组织分割，建议先用 CLAM/Trident 生成坐标，再交给本仓库编码。
+Coordinate files may be HDF5 with a dataset named `coords`, CSV with `x,y` columns, JSON/JSONL, or `.pt/.pth`. All coordinates are interpreted as OpenSlide level-0 `(x, y)` positions; `--level` selects the level used to read each patch. The tool does not automatically adopt patch-level or patch-size attributes from the coordinate file, so `--level` and `--patch-size` must match the upstream pipeline. External coordinates are still filtered by `--min-tissue`, ranked by tissue fraction, and truncated by `--max-patches`. To preserve every upstream coordinate, set `--min-tissue 0` and choose a sufficiently large `--max-patches` value. For complex tissue segmentation, generate coordinates with CLAM or Trident first and then encode them with this repository.
 
-输出是 CPU tensor 的 `.pt` 字典：
+The output is a `.pt` dictionary containing CPU tensors:
 
 ```python
 artifact = torch.load("outputs/slide.pt", map_location="cpu")
@@ -79,36 +79,37 @@ artifact["tissue_fraction"]   # [N], float32
 artifact["metadata"]
 ```
 
-`--pool mean` 默认取 CLIP 倒数第二层，移除 CLS 后对 576 个 patch token 求均值。也可选择 `cls` 或 `tokens`。保存精度默认 FP16，可用 `--output-dtype float32` 修改。
+By default, `--pool mean` uses the penultimate CLIP layer, removes the CLS token, and averages the remaining 576 patch tokens. The `cls` and `tokens` modes are also available. Features are saved in FP16 by default; use `--output-dtype float32` to change the output precision.
 
-网格会保留 slide 边界处的不完整 patch，并统一用白色补齐；组织占比的分母包含补齐区域。若没有 patch 通过阈值，特征命令仍会写出 shape 正确的空 artifact，便于批处理检测；VLM 推理则会明确报错，因为它必须至少有一个视觉输入。
+Grid sampling retains incomplete patches at slide boundaries and pads them with white pixels. The padded area is included in the denominator when calculating the tissue fraction. If no patch passes the threshold, the feature-extraction command still writes an empty artifact with the correct shape, which simplifies batch validation. VLM inference instead raises an explicit error because it requires at least one visual input.
 
-## 4. 完整视觉语言推理
+## 4. Vision-Language Inference
 
-普通图像：
+### Ordinary image
 
 ```bash
 crchat infer \
   --image /path/to/patch.jpg \
-  --prompt '请描述该病理图像中的组织学特征。' \
+  --prompt 'Describe the histological features in this pathology image.' \
   --device-map auto \
   --max-new-tokens 256
 ```
 
-WSI：
+### WSI
 
 ```bash
 crchat infer \
   --slide /path/to/slide.svs \
   --coords /path/to/coords.h5 \
   --max-tiles 1 \
-  --prompt '请描述所选区域的主要组织学特征。' \
+  --prompt 'Describe the main histological features in the selected region.' \
   --json outputs/answer.json
 ```
 
-每个 tile 对应一个 `<image>`，经过 576 个视觉 token 插入到训练时的 Qwen/LLaVA 模板中。程序会在生成前检查扩展后的上下文长度。CRChat-32B FP16 约需 65 GB 以上显存，推荐两张 80 GB GPU 并使用 `--device-map auto`。
+Each tile corresponds to one `<image>` placeholder and contributes 576 visual tokens to the Qwen/LLaVA prompt template used during training. The program validates the expanded context length before generation. CRChat-32B in FP16 requires approximately 65 GB or more of GPU memory. Two 80 GB GPUs with `--device-map auto` are recommended.
 
-注意：checkpoint 的原始训练分布决定推理能力。默认的 WSI 模式只按 HSV 组织占比选取最高的一个 tile；提高 `--max-tiles` 是工程层面的多图输入接口，不等同于经过验证的 slide-level MIL/聚合模型。
+> [!NOTE]
+> The checkpoint's original training distribution determines its inference capabilities. The default WSI mode selects only the tile with the highest HSV-based tissue fraction. Increasing `--max-tiles` enables an engineering-level multi-image input interface; it is not equivalent to a validated slide-level MIL or aggregation model.
 
 ## 5. Python API
 
@@ -121,33 +122,37 @@ runtime = load_crchat(
     device_map="auto",
 )
 images = load_rgb_images(["/path/to/patch.jpg"])
-answer = runtime.generate(images, "请描述图像。", max_new_tokens=128)
+answer = runtime.generate(
+    images,
+    "Describe the histological features in this image.",
+    max_new_tokens=128,
+)
 print(answer)
 ```
 
-## 6. 验证
+## 6. Validation
 
 ```bash
 TMPDIR=/tmp pytest -q
 crchat inspect-model --model "$CRCHAT_MODEL_PATH"
 ```
 
-测试覆盖离线 vision 权重加载、特征 pooling、CLAM/Trident 坐标读取、WSI patch 管线、训练 prompt 模板、多模态 token 插入和输入数量校验。
+The tests cover offline vision-weight loading, feature pooling, CLAM/Trident coordinate parsing, the WSI patch pipeline, the training prompt template, multimodal token insertion, and input-count validation.
 
-## 7. 目录结构
+## 7. Repository Layout
 
 ```text
-src/crchat/model/     CRChat/Qwen2 模型、projector、离线 CLIP loader
-src/crchat/wsi/       OpenSlide/PIL reader、坐标、组织筛选与特征管线
-src/crchat/cli.py     inspect / extract-image / extract-wsi / infer
-tests/                无需 32B 权重的确定性测试
-examples/             可直接修改的命令示例
+src/crchat/model/     CRChat/Qwen2 model, projector, and offline CLIP loader
+src/crchat/wsi/       OpenSlide/PIL readers, coordinates, tissue filtering, and feature pipeline
+src/crchat/cli.py     inspect / extract-image / extract-wsi / infer commands
+tests/                Deterministic tests that do not require the 32B checkpoint
+examples/             Ready-to-edit command examples
 ```
 
-## 8. 使用边界
+## 8. Intended Use and Limitations
 
-本项目是研究用途代码，不是医疗器械，不应单独用于诊断、治疗决策或临床结论。WSI 的 HSV 组织筛选只是候选 patch 排序启发式方法，不是病理分割算法。
+This project is research code, not a medical device. It must not be used on its own for diagnosis, treatment decisions, or clinical conclusions. The HSV-based WSI tissue filter is a heuristic for ranking candidate patches, not a pathology segmentation algorithm.
 
 ## License
 
-Apache-2.0。核心多模态组织方式改编自 LLaVA；详见 `NOTICE`。
+Apache-2.0. The core multimodal organization is adapted from LLaVA; see `NOTICE` for details.

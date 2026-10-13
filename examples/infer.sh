@@ -6,6 +6,6 @@ set -euo pipefail
 crchat infer \
   --model "$CRCHAT_MODEL_PATH" \
   --image /path/to/pathology_patch.jpg \
-  --prompt '请描述该病理图像中的组织学特征。' \
+  --prompt 'Describe the histological features in this pathology image.' \
   --device-map auto \
   --max-new-tokens 256
