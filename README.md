@@ -9,6 +9,8 @@ CRChat is a LLaVA/Qwen2 inference repository for pathology images. It distills t
 
 This repository does not include model weights, training data, patient data, or the CLAM/Trident source code.
 
+Model Weights: [https://www.modelscope.cn/models/centurioncrawler/CRChat-32B](https://www.modelscope.cn/models/centurioncrawler/CRChat-32B)
+
 ## 1. Installation
 
 The project has been validated in the existing `llava` environment with Python 3.9, PyTorch 2.1.2, and Transformers 4.37.2.
