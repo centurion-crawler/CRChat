@@ -103,7 +103,6 @@ crchat infer \
 crchat infer \
   --slide /path/to/slide.svs \
   --coords /path/to/coords.h5 \
-  --max-tiles 1 \
   --prompt 'Describe the main histological features in the selected region.' \
   --json outputs/answer.json
 ```
